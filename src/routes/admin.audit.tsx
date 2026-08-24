@@ -7,6 +7,9 @@ import { PageHeader, StatusPill } from "@/components/admin/ui-bits";
 import { DataTable, type Column } from "@/components/admin/data-table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { dateTime } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { downloadCsv, type CsvColumn } from "@/lib/csv";
+import { Download } from "lucide-react";
 
 export const Route = createFileRoute("/admin/audit")({
   head: () => ({
@@ -110,6 +113,41 @@ function AuditPage() {
     },
   ];
 
+  const logCsv: CsvColumn<any>[] = [
+    { header: "Date", value: (r) => r.created_at },
+    { header: "Action", value: (r) => r.action },
+    { header: "Type de ressource", value: (r) => r.resource_type ?? r.target_type },
+    { header: "Identifiant ressource", value: (r) => r.resource_id ?? r.target_id },
+    { header: "Admin", value: (r) => r.admin_id },
+    { header: "Détails", value: (r) => r.metadata ?? r.new_value },
+  ];
+
+  const historyCsv: CsvColumn<any>[] = [
+    { header: "Date", value: (r) => r.created_at },
+    { header: "Transaction", value: (r) => r.transaction_id },
+    { header: "Statut précédent", value: (r) => r.previous_status },
+    { header: "Nouveau statut", value: (r) => r.new_status },
+    { header: "Étape précédente", value: (r) => r.previous_stage },
+    { header: "Nouvelle étape", value: (r) => r.new_stage },
+    { header: "Motif", value: (r) => r.reason },
+  ];
+
+  const notifCsv: CsvColumn<any>[] = [
+    { header: "Envoyée le", value: (r) => r.sent_at },
+    { header: "Canal", value: (r) => r.channel },
+    { header: "Type", value: (r) => r.event_type ?? r.notification_type ?? r.type },
+    { header: "Destinataire", value: (r) => r.recipient ?? r.user_id },
+    { header: "Statut", value: (r) => r.status },
+    { header: "Message", value: (r) => r.message },
+  ];
+
+  const exportButton = (label: string, onClick: () => void, disabled: boolean) => (
+    <Button variant="outline" size="sm" onClick={onClick} disabled={disabled}>
+      <Download className="size-4" />
+      {label}
+    </Button>
+  );
+
   return (
     <div className="space-y-5">
       <PageHeader title="Audit" subtitle="Traçabilité complète des opérations de la plateforme" />
@@ -122,7 +160,20 @@ function AuditPage() {
         </TabsList>
 
         <TabsContent value="logs" className="mt-4">
-          <DataTable columns={logColumns} rows={data?.logs} loading={isPending} empty="Aucune action enregistrée." />
+          <DataTable
+            columns={logColumns}
+            rows={data?.logs}
+            loading={isPending}
+            empty="Aucune action enregistrée."
+            searchable
+            paginated
+            searchPlaceholder="Rechercher une action…"
+            toolbar={exportButton(
+              "Exporter CSV",
+              () => downloadCsv("audit-actions-admin", logCsv, data?.logs ?? []),
+              !data?.logs?.length,
+            )}
+          />
         </TabsContent>
         <TabsContent value="history" className="mt-4">
           <DataTable
@@ -130,6 +181,14 @@ function AuditPage() {
             rows={data?.history}
             loading={isPending}
             empty="Aucun changement de statut."
+            searchable
+            paginated
+            searchPlaceholder="Rechercher une transition…"
+            toolbar={exportButton(
+              "Exporter CSV",
+              () => downloadCsv("audit-historique-transactions", historyCsv, data?.history ?? []),
+              !data?.history?.length,
+            )}
           />
         </TabsContent>
         <TabsContent value="notifications" className="mt-4">
@@ -138,6 +197,14 @@ function AuditPage() {
             rows={data?.notifications}
             loading={isPending}
             empty="Aucune notification."
+            searchable
+            paginated
+            searchPlaceholder="Rechercher une notification…"
+            toolbar={exportButton(
+              "Exporter CSV",
+              () => downloadCsv("audit-notifications", notifCsv, data?.notifications ?? []),
+              !data?.notifications?.length,
+            )}
           />
         </TabsContent>
       </Tabs>
