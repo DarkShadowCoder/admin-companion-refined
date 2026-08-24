@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { Loader2, ShieldCheck } from "lucide-react";
 
 import { supabase } from "@/integrations/supabase/client";
+import { adminLogin } from "@/lib/auth.functions";
 import { useAdminSession } from "@/hooks/useAdminSession";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +17,8 @@ export const Route = createFileRoute("/login")({
       { title: "Connexion administrateur — Zender237" },
       {
         name: "description",
-        content: "Accès sécurisé au back-office administrateur Zender237 : transactions, règlements et wallets.",
+        content:
+          "Accès sécurisé au back-office administrateur Zender237 : transactions, règlements et wallets.",
       },
       { property: "og:title", content: "Connexion administrateur — Zender237" },
       {
@@ -28,11 +31,19 @@ export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
 
+const errorLabels: Record<string, string> = {
+  INVALID_CREDENTIALS: "Numéro de téléphone ou code secret invalide.",
+  ADMIN_DISABLED: "Compte désactivé — contactez le responsable de la plateforme.",
+  ADMIN_NO_AUTH_ACCOUNT: "Aucun compte d'authentification n'est lié à cet administrateur.",
+  SESSION_ISSUE_FAILED: "Impossible d'ouvrir la session. Réessayez dans un instant.",
+};
+
 function LoginPage() {
   const router = useRouter();
   const { admin, session, reason } = useAdminSession();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const login = useServerFn(adminLogin);
+  const [phone, setPhone] = useState("");
+  const [secretCode, setSecretCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,13 +55,21 @@ function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    setLoading(false);
-    if (err) {
-      setError("Identifiants invalides. Vérifiez votre email et votre mot de passe.");
-      return;
+    try {
+      const res = await login({ data: { phone: phone.trim(), secretCode: secretCode.trim() } });
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        type: "email",
+        token_hash: res.tokenHash,
+      });
+      if (verifyError) throw new Error("SESSION_ISSUE_FAILED");
+      router.navigate({ to: "/admin" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      const key = Object.keys(errorLabels).find((k) => message.includes(k));
+      setError(key ? errorLabels[key]! : "Connexion impossible. Réessayez.");
+    } finally {
+      setLoading(false);
     }
-    router.navigate({ to: "/admin" });
   };
 
   const accountError =
@@ -74,8 +93,8 @@ function LoginPage() {
             Le centre de contrôle opérationnel de Zender237.
           </h2>
           <p className="text-sm text-primary-foreground/80">
-            Supervision des transactions, vérification des preuves, affectation aux partenaires, règlements bancaires
-            et audit complet — en un seul endroit.
+            Supervision des transactions, vérification des preuves, affectation aux partenaires,
+            règlements bancaires et audit complet — en un seul endroit.
           </p>
         </div>
         <p className="text-xs text-primary-foreground/60">Accès réservé aux administrateurs autorisés.</p>
@@ -93,27 +112,29 @@ function LoginPage() {
 
           <form onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="email">Identifiant</Label>
+              <Label htmlFor="phone">Numéro de téléphone</Label>
               <Input
-                id="email"
-                type="email"
-                autoComplete="email"
+                id="phone"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@zender237.com"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+237 6 20 00 00 00"
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="password">Mot de passe</Label>
+              <Label htmlFor="secret-code">Code secret</Label>
               <Input
-                id="password"
+                id="secret-code"
                 type="password"
+                inputMode="numeric"
                 autoComplete="current-password"
                 required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                value={secretCode}
+                onChange={(e) => setSecretCode(e.target.value)}
+                placeholder="••••••"
               />
             </div>
 
@@ -130,7 +151,7 @@ function LoginPage() {
           </form>
 
           <p className="mt-5 text-center text-xs text-muted-foreground">
-            Compte oublié ou bloqué ? Contactez le responsable de la plateforme.
+            Code secret oublié ou compte bloqué ? Contactez le responsable de la plateforme.
           </p>
         </Card>
       </div>
